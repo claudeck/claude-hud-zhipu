@@ -52,6 +52,7 @@ export interface HudConfig {
     showModel: boolean;
     showProject: boolean;
     showContextBar: boolean;
+    contextWindowSize: number;
     contextValue: ContextValueMode;
     showConfigCounts: boolean;
     showDuration: boolean;
@@ -90,6 +91,7 @@ export const DEFAULT_CONFIG: HudConfig = {
     showModel: true,
     showProject: true,
     showContextBar: true,
+    contextWindowSize: 200_000,
     contextValue: 'percent',
     showConfigCounts: false,
     showDuration: false,
@@ -257,6 +259,7 @@ export function mergeConfig(userConfig: Partial<HudConfig>): HudConfig {
     showContextBar: typeof migrated.display?.showContextBar === 'boolean'
       ? migrated.display.showContextBar
       : DEFAULT_CONFIG.display.showContextBar,
+    contextWindowSize: validatePositiveInt(migrated.display?.contextWindowSize, DEFAULT_CONFIG.display.contextWindowSize),
     contextValue: validateContextValue(migrated.display?.contextValue)
       ? migrated.display.contextValue
       : DEFAULT_CONFIG.display.contextValue,

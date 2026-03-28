@@ -1,6 +1,17 @@
 import type { StdinData } from './types.js';
 import { AUTOCOMPACT_BUFFER_PERCENT } from './constants.js';
 
+/** Resolve effective context window size: env > config > default (200k). */
+export function resolveContextSize(configSize?: number): number {
+  const envRaw = process.env.CONTEXT_WINDOW_SIZE;
+  if (envRaw) {
+    const parsed = parseInt(envRaw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  if (configSize && configSize > 0) return configSize;
+  return 200_000;
+}
+
 export async function readStdin(): Promise<StdinData | null> {
   if (process.stdin.isTTY) {
     return null;
@@ -51,30 +62,28 @@ function getNativePercent(stdin: StdinData): number | null {
   return null;
 }
 
-export function getContextPercent(stdin: StdinData): number {
-  const size = stdin.context_window?.context_window_size;
-  if (!size || size <= 0) {
-    return 0;
-  }
+export function getContextPercent(stdin: StdinData, contextSize?: number): number {
+  const size = resolveContextSize(contextSize);
 
   // 手动计算作为基准
   const totalTokens = getTotalTokens(stdin);
   const manualPercent = Math.min(100, Math.round((totalTokens / size) * 100));
 
-  // 优先使用原生百分比，但为 0 时用手动计算兜底
+  // 仅当 Claude Code 报告的上下文窗口与我们的配置一致时，才使用原生百分比
+  // （否则原生百分比基于不同的窗口大小，会给出错误的结果）
   const native = getNativePercent(stdin);
   if (native !== null && native > 0) {
-    return native;
+    const reportedSize = stdin.context_window?.context_window_size;
+    if (!reportedSize || reportedSize === size) {
+      return native;
+    }
   }
 
   return manualPercent;
 }
 
-export function getBufferedPercent(stdin: StdinData): number {
-  const size = stdin.context_window?.context_window_size;
-  if (!size || size <= 0) {
-    return 0;
-  }
+export function getBufferedPercent(stdin: StdinData, contextSize?: number): number {
+  const size = resolveContextSize(contextSize);
 
   const totalTokens = getTotalTokens(stdin);
 
@@ -86,10 +95,13 @@ export function getBufferedPercent(stdin: StdinData): number {
   const buffer = size * AUTOCOMPACT_BUFFER_PERCENT * scale;
   const manualBuffered = Math.min(100, Math.round(((totalTokens + buffer) / size) * 100));
 
-  // 优先使用原生百分比，但为 0 时用手动计算兜底
+  // 仅当 Claude Code 报告的上下文窗口与我们的配置一致时，才使用原生百分比
   const native = getNativePercent(stdin);
   if (native !== null && native > 0) {
-    return native;
+    const reportedSize = stdin.context_window?.context_window_size;
+    if (!reportedSize || reportedSize === size) {
+      return native;
+    }
   }
 
   return manualBuffered;
@@ -114,15 +126,21 @@ export function normalizeGLMModelLabel(modelId: string): string | null {
   return 'GLM';
 }
 
+/** Strip context window suffix from model name (e.g. "[1m]"). */
+function stripContextSuffix(name: string): string {
+  return name.replace(/\[.*\]$/, '').trim();
+}
+
 export function getModelName(stdin: StdinData): string {
   const displayName = stdin.model?.display_name?.trim();
   if (displayName) {
+    const cleaned = stripContextSuffix(displayName);
     // 对 GLM 模型 ID 做格式化显示
-    const normalizedGLM = normalizeGLMModelLabel(displayName);
+    const normalizedGLM = normalizeGLMModelLabel(cleaned);
     if (normalizedGLM) {
       return normalizedGLM;
     }
-    return displayName;
+    return cleaned;
   }
 
   const modelId = stdin.model?.id?.trim();
@@ -130,13 +148,14 @@ export function getModelName(stdin: StdinData): string {
     return 'Unknown';
   }
 
-  const normalizedGLM = normalizeGLMModelLabel(modelId);
+  const cleanedId = stripContextSuffix(modelId);
+  const normalizedGLM = normalizeGLMModelLabel(cleanedId);
   if (normalizedGLM) {
     return normalizedGLM;
   }
 
-  const normalizedBedrockLabel = normalizeBedrockModelLabel(modelId);
-  return normalizedBedrockLabel ?? modelId;
+  const normalizedBedrockLabel = normalizeBedrockModelLabel(cleanedId);
+  return normalizedBedrockLabel ?? cleanedId;
 }
 
 export function isBedrockModelId(modelId?: string): boolean {

@@ -1,12 +1,13 @@
 import type { RenderContext } from '../../types.js';
-import { getContextPercent, getBufferedPercent, getTotalTokens } from '../../stdin.js';
+import { getContextPercent, getBufferedPercent, getTotalTokens, resolveContextSize } from '../../stdin.js';
 import { coloredBar, dim, getContextColor, RESET } from '../colors.js';
 
 const DEBUG = process.env.DEBUG?.includes('claude-hud') || process.env.DEBUG === '*';
 
 export function renderIdentityLine(ctx: RenderContext): string {
-  const rawPercent = getContextPercent(ctx.stdin);
-  const bufferedPercent = getBufferedPercent(ctx.stdin);
+  const contextSize = ctx.config?.display?.contextWindowSize;
+  const rawPercent = getContextPercent(ctx.stdin, contextSize);
+  const bufferedPercent = getBufferedPercent(ctx.stdin, contextSize);
   const autocompactMode = ctx.config?.display?.autocompactBuffer ?? 'enabled';
   const percent = autocompactMode === 'disabled' ? rawPercent : bufferedPercent;
   const colors = ctx.config?.colors;
@@ -49,7 +50,7 @@ function formatTokens(n: number): string {
 function formatContextValue(ctx: RenderContext, percent: number, mode: 'percent' | 'tokens' | 'remaining'): string {
   if (mode === 'tokens') {
     const totalTokens = getTotalTokens(ctx.stdin);
-    const size = ctx.stdin.context_window?.context_window_size ?? 0;
+    const size = resolveContextSize(ctx.config?.display?.contextWindowSize);
     if (size > 0) {
       return `${formatTokens(totalTokens)}/${formatTokens(size)}`;
     }

@@ -1,6 +1,6 @@
 import type { RenderContext } from '../types.js';
 import { isLimitReached } from '../types.js';
-import { getContextPercent, getBufferedPercent, getModelName, getProviderLabel, getTotalTokens } from '../stdin.js';
+import { getContextPercent, getBufferedPercent, getModelName, getProviderLabel, getTotalTokens, resolveContextSize } from '../stdin.js';
 import { getOutputSpeed } from '../speed-tracker.js';
 import { coloredBar, critical, cyan, dim, magenta, red, warning, yellow, getContextColor, getQuotaColor, quotaBar, RESET } from './colors.js';
 import { isGLMModelId } from '../stdin.js';
@@ -14,8 +14,8 @@ const DEBUG = process.env.DEBUG?.includes('claude-hud') || process.env.DEBUG ===
 export function renderSessionLine(ctx: RenderContext): string {
   const model = getModelName(ctx.stdin);
 
-  const rawPercent = getContextPercent(ctx.stdin);
-  const bufferedPercent = getBufferedPercent(ctx.stdin);
+  const rawPercent = getContextPercent(ctx.stdin, ctx.config?.display?.contextWindowSize);
+  const bufferedPercent = getBufferedPercent(ctx.stdin, ctx.config?.display?.contextWindowSize);
   const autocompactMode = ctx.config?.display?.autocompactBuffer ?? 'enabled';
   const percent = autocompactMode === 'disabled' ? rawPercent : bufferedPercent;
 
@@ -264,7 +264,7 @@ function formatTokens(n: number): string {
 function formatContextValue(ctx: RenderContext, percent: number, mode: 'percent' | 'tokens' | 'remaining'): string {
   if (mode === 'tokens') {
     const totalTokens = getTotalTokens(ctx.stdin);
-    const size = ctx.stdin.context_window?.context_window_size ?? 0;
+    const size = resolveContextSize(ctx.config?.display?.contextWindowSize);
     if (size > 0) {
       return `${formatTokens(totalTokens)}/${formatTokens(size)}`;
     }
